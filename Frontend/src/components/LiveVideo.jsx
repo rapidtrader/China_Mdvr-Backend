@@ -294,8 +294,9 @@ const LiveVideo = () => {
   const [warning, setWarning] = useState('');
   const [token, setToken] = useState('');
   const [selectedDevice, setSelectedDevice] = useState('');
-  const [selectedChannel, setSelectedChannel] = useState(6);
+  const [selectedChannels, setSelectedChannels] = useState([6]);
   const [deviceIds, setDeviceIds] = useState([]);
+  const [isChannelDropdownOpen, setIsChannelDropdownOpen] = useState(false);
 
   useEffect(() => {
     // Get token from localStorage
@@ -311,15 +312,15 @@ const LiveVideo = () => {
   }, []);
 
   // Set up auto-refresh interval with proper dependencies
-  useEffect(() => {
-    if (!selectedDevice || !token) return;
+  // useEffect(() => {
+  //   if (!selectedDevice || !token) return;
 
-    const interval = setInterval(() => {
-      fetchVideoPreview(token, selectedDevice, selectedChannel);
-    }, 60000);
+  //   const interval = setInterval(() => {
+  //     fetchVideoPreview(token, selectedDevice, selectedChannels);
+  //   }, 60000);
 
-    return () => clearInterval(interval);
-  }, [selectedDevice, token, selectedChannel]);
+  //   return () => clearInterval(interval);
+  // }, [selectedDevice, token, selectedChannels]);
 
   // Set up GPS data auto-refresh every 15 seconds
   useEffect(() => {
@@ -384,7 +385,7 @@ const LiveVideo = () => {
       
       if (deviceIds.length > 0) {
         setSelectedDevice(deviceIds[0]);
-        fetchVideoPreview(authToken, deviceIds[0], selectedChannel);
+        fetchVideoPreview(authToken, deviceIds[0], selectedChannels);
       }
     } catch (err) {
       setError('Network error. Please try again.');
@@ -394,7 +395,7 @@ const LiveVideo = () => {
     }
   };
 
-  const fetchVideoPreview = async (authToken, deviceId, channel = selectedChannel) => {
+  const fetchVideoPreview = async (authToken, deviceId, channels = selectedChannels) => {
     try {
       setLoading(true);
       setError('');
@@ -413,7 +414,7 @@ const LiveVideo = () => {
           },
           body: JSON.stringify({
             deviceId,
-            channels: [channel],
+            channels: channels,
             dataType: 1,
             // IMPORTANT: Vendor demo defaults to main stream (0). Sub-stream (1) can fail with WebRTC SDP "stream not found".
             streamType: 0,
@@ -459,11 +460,20 @@ const LiveVideo = () => {
   };
 
   const handleChannelChange = (channel) => {
-    setSelectedChannel(channel);
-    if (token && selectedDevice) {
-      fetchVideoPreview(token, selectedDevice, channel);
-    }
+    setSelectedChannels((prev) => {
+      if (prev.includes(channel)) {
+        return prev.filter((c) => c !== channel);
+      } else {
+        return [...prev, channel];
+      }
+    });
   };
+
+  useEffect(() => {
+    if (token && selectedDevice && selectedChannels.length > 0) {
+      fetchVideoPreview(token, selectedDevice, selectedChannels);
+    }
+  }, [selectedChannels]);
 
   const handleRefresh = () => {
     if (token && selectedDevice) {
@@ -540,21 +550,47 @@ const LiveVideo = () => {
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Select Channel</label>
-            <select
-              value={selectedChannel}
-              onChange={(e) => handleChannelChange(parseInt(e.target.value))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            >
-              <option value={1}>Channel 1</option>
-              <option value={2}>Channel 2</option>
-              <option value={3}>Channel 3</option>
-              <option value={4}>Channel 4</option>
-              <option value={5}>Channel 5</option>
-              <option value={6}>Channel 6</option>
-              <option value={7}>Channel 7</option>
-              <option value={8}>Channel 8</option>
-            </select>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Select Channels</label>
+            <div className="relative">
+              <button
+                onClick={() => setIsChannelDropdownOpen(!isChannelDropdownOpen)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-left flex items-center justify-between"
+              >
+                <span>
+                  {selectedChannels.length === 0
+                    ? 'Select channels'
+                    : selectedChannels.length === 1
+                      ? `Channel ${selectedChannels[0]}`
+                      : `${selectedChannels.length} channels selected`}
+                </span>
+                <svg
+                  className={`w-4 h-4 transition-transform ${isChannelDropdownOpen ? 'rotate-180' : ''}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {isChannelDropdownOpen && (
+                <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
+                  {[1, 2, 3, 4, 5, 6, 7, 8].map((channel) => (
+                    <button
+                      key={channel}
+                      onClick={() => handleChannelChange(channel)}
+                      className="w-full px-3 py-2 text-left hover:bg-gray-100 flex items-center justify-between"
+                    >
+                      <span>Channel {channel}</span>
+                      {selectedChannels.includes(channel) && (
+                        <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
@@ -576,7 +612,7 @@ const LiveVideo = () => {
               {video.errCode === 0 && getPlayableUrl(video) ? (
                 <StreamPlayer
                   video={video}
-                  uniqueKey={`${video.deviceId}_${video.channel}_${selectedChannel}`}
+                  uniqueKey={`${video.deviceId}_${video.channel}_${selectedChannels.join('_')}`}
                 />
               ) : (
                 <div className="flex items-center justify-center h-full">
