@@ -530,7 +530,7 @@ const GpsData = () => {
 
   // Default Card Selection View
   return (
-    <div className="min-h-screen bg-white p-4 sm:p-6 lg:p-8">
+    <div className="min-h-screen bg-white p-4 sm:p-6 lg:p-8 mt-16 sm:mt-0">
       {/* Header Section */}
       <div className="mb-6 sm:mb-8">
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-2 space-y-4 sm:space-y-0">

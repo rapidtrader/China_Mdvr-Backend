@@ -94,7 +94,7 @@ const Dashboard = () => {
     <div className="min-h-screen bg-white">
       {/* Header */}
       <div className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-16 sm:mt-0">
           <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center py-4 sm:py-6 space-y-4 sm:space-y-0">
             <div>
               <h1 className="text-xl sm:text-2xl font-bold text-black">MDVR Device Dashboard</h1>
