@@ -424,9 +424,23 @@ app.get('/api/hmi32/history', async (req, res) => {
     const machineId = String(req.query.machineId || '').trim() || undefined;
     const limit = req.query.limit ? parseInt(String(req.query.limit), 10) : 100;
     
+    // Only show records from last 7 days to exclude old seed data
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    
     const filter = machineId ? { machineId } : {};
+    // Include records from last 7 days OR where source is 'hmi32_app' (fresh data from PyQT5)
     const docs = await db.collection('hmi32_history')
-      .find(filter)
+      .find({
+        $and: [
+          filter,
+          {
+            $or: [
+              { updated_at: { $gte: sevenDaysAgo } },
+              { source: 'hmi32_app' }
+            ]
+          }
+        ]
+      })
       .sort({ updated_at: -1 })
       .limit(Math.min(limit, 1000))
       .toArray();

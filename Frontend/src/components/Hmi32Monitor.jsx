@@ -269,7 +269,7 @@ const Hmi32Monitor = () => {
                       const adc = item.adc || {};
                       const distance = item.distance || {};
                       const onStates = Object.entries(state)
-                        .filter(([k, v]) => v === true && !k.includes('button'))
+                        .filter(([k, v]) => v === true && k !== 'buttonColors' && typeof v === 'boolean')
                         .map(([k]) => k);
 
                       return (
