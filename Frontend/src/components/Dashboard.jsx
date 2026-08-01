@@ -92,7 +92,6 @@ const Dashboard = () => {
     if (token) {
       fetchDevices(token);
     }
-    fetchHmi32Latest();
   };
 
   if (loading) {

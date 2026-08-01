@@ -224,8 +224,26 @@ async function run() {
     console.log('⏭️  hmi32_state.json — skipped (missing or no machineId)');
   }
 
-  console.log(`\n🎉 Import complete — ${imported} records saved to ${DB_NAME}`);
-  await client.close();
+  // ─── 6. hmi32_history.json → hmi32_history ──────────────────────────────
+  const hmi32History = readJson('hmi32_history.json');
+  if (Array.isArray(hmi32History) && hmi32History.length > 0) {
+    const historyDocs = hmi32History.map((h) => ({
+      machineId: h.machineId || hmiMachineId,
+      updated_at: h.updated_at ? new Date(h.updated_at) : new Date(),
+      state: h.state || {},
+      adc: h.adc || {},
+      distance: h.distance || {},
+      runtime: h.runtime || {},
+      source: 'local_import',
+      created_at: new Date(),
+    }));
+    
+    await db.collection('hmi32_history').insertMany(historyDocs);
+    console.log(`✅ hmi32_history.json → hmi32_history  [${historyDocs.length} records]`);
+    imported += historyDocs.length;
+  } else {
+    console.log('⏭️  hmi32_history.json — skipped (empty or missing)');
+  }
 }
 
 run().catch((e) => {

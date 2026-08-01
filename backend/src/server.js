@@ -417,6 +417,84 @@ app.get('/api/hmi32/latest', async (req, res) => {
   }
 });
 
+// Get HMI32 state history (all recent state changes)
+app.get('/api/hmi32/history', async (req, res) => {
+  try {
+    const db = require('./mongodb').getDatabase();
+    const machineId = String(req.query.machineId || '').trim() || undefined;
+    const limit = req.query.limit ? parseInt(String(req.query.limit), 10) : 100;
+    
+    const filter = machineId ? { machineId } : {};
+    const docs = await db.collection('hmi32_history')
+      .find(filter)
+      .sort({ updated_at: -1 })
+      .limit(Math.min(limit, 1000))
+      .toArray();
+    
+    return res.json({ success: true, data: docs });
+  } catch (error) {
+    console.error('Error fetching HMI32 history:', error.message);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch HMI32 history',
+      error: error.message
+    });
+  }
+});
+
+// Save HMI32 state change to history
+app.post('/api/hmi32/history', async (req, res) => {
+  try {
+    console.log('[HMI32 History API] POST received:', JSON.stringify(req.body).substring(0, 200));
+    
+    const db = require('./mongodb').getDatabase();
+    const { machineId, state, adc, distance, runtime } = req.body;
+    
+    if (!machineId) {
+      console.log('[HMI32 History API] ❌ Missing machineId');
+      return res.status(400).json({
+        success: false,
+        message: 'machineId is required'
+      });
+    }
+
+    console.log(`[HMI32 History API] Saving for machineId: ${machineId}`);
+    
+    // Ensure collection exists and has indexes
+    const collection = db.collection('hmi32_history');
+    await collection.createIndex({ machineId: 1 });
+    await collection.createIndex({ updated_at: -1 });
+
+    const historyRecord = {
+      machineId,
+      state: state || {},
+      adc: adc || {},
+      distance: distance || {},
+      runtime: runtime || {},
+      updated_at: new Date(),
+      created_at: new Date(),
+      source: 'hmi32_app'
+    };
+
+    const result = await collection.insertOne(historyRecord);
+    console.log(`[HMI32 History API] ✅ Inserted record for ${machineId}:`, result.insertedId);
+    
+    return res.json({
+      success: true,
+      message: 'State saved to history',
+      data: historyRecord,
+      id: result.insertedId
+    });
+  } catch (error) {
+    console.error('[HMI32 History API] ❌ Error:', error.message, error.stack);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to save HMI32 history',
+      error: error.message
+    });
+  }
+});
+
 // Machine info from machineinfos collection
 app.get('/api/hmi32/machine-info', async (req, res) => {
   try {

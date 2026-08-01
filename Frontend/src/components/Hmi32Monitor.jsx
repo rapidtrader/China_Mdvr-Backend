@@ -52,21 +52,19 @@ const Section = ({ title, accent = 'indigo', children }) => {
 };
 
 const MachineCard = ({ row }) => {
-  const rawState = row.state || {};
-  const states   = rawState.states   || rawState;
-  const adc      = rawState.adc      || states.adc      || {};
-  const distance = rawState.distance || states.distance || {};
-  const runtime  = rawState.runtime  || row.runtime     || {};
-  const a25      = row.a25    || {};
-  const canCmd   = row.canCmd  || {};
-  const canGpio  = row.canGpio || {};
+  const state = row.state || {};
+  const adc = row.adc || {};
+  const distance = row.distance || {};
+  const runtime = row.runtime || {};
 
-  const stateKeys = Object.keys(states).filter(
-    (k) => !['machineId','tsEpoch','adc','distance','runtime','buttonColors'].includes(k)
-  );
+  // Extract only boolean states (ON/OFF)
+  const booleanStates = Object.entries(state)
+    .filter(([k, v]) => typeof v === 'boolean' && !['buttonColors'].includes(k))
+    .sort(([a], [b]) => a.localeCompare(b));
 
   return (
     <div className="bg-white shadow rounded-lg overflow-hidden border border-gray-200">
+      {/* Header */}
       <div className="bg-indigo-600 px-5 py-3 flex items-center justify-between">
         <div>
           <p className="text-xs text-indigo-200">Machine ID</p>
@@ -80,68 +78,50 @@ const MachineCard = ({ row }) => {
         </div>
       </div>
 
-      <div className="p-4">
-        {stateKeys.length > 0 && (
-          <Section title="Machine States" accent="indigo">
-            {stateKeys.map((k) => {
-              const v = states[k];
-              return (typeof v === 'boolean' || v === 0 || v === 1)
-                ? <StatusBadge key={k} label={k} value={v} />
-                : <KVRow key={k} label={k} value={v} />;
-            })}
+      <div className="p-4 space-y-4">
+        {/* Machine Control States */}
+        {booleanStates.length > 0 && (
+          <Section title="Machine Controls" accent="indigo">
+            <div className="grid grid-cols-2 gap-2">
+              {booleanStates.map(([k, v]) => (
+                <StatusBadge key={k} label={k} value={v} />
+              ))}
+            </div>
           </Section>
         )}
 
+        {/* ADC Sensors */}
         {(adc.suction != null || adc.pa0 != null) && (
-          <Section title="ADC Sensors" accent="blue">
-            {adc.suction != null && <KVRow label="Suction ADC" value={adc.suction} />}
-            {adc.pa0     != null && <KVRow label="PA0 ADC"     value={adc.pa0}     />}
+          <Section title="Sensors" accent="blue">
+            {adc.suction != null && <KVRow label="Suction" value={`${adc.suction}`} />}
+            {adc.pa0 != null && <KVRow label="PA0" value={`${adc.pa0}`} />}
           </Section>
         )}
 
+        {/* Distance */}
         {(distance.cm != null || distance.a25Cm != null) && (
           <Section title="Distance" accent="green">
-            {distance.cm      != null && <KVRow label="Distance (cm)" value={distance.cm}        />}
-            {distance.a25Cm   != null && <KVRow label="A25 (cm)"      value={distance.a25Cm}     />}
-            {distance.a25Status      && <KVRow label="A25 Status"     value={distance.a25Status} />}
+            {distance.cm != null && <KVRow label="Distance" value={`${distance.cm} cm`} />}
+            {distance.a25Cm != null && <KVRow label="A25" value={`${distance.a25Cm} cm`} />}
+            {distance.a25Status && <KVRow label="Status" value={distance.a25Status} />}
           </Section>
         )}
 
-        {Object.keys(a25).length > 0 && (
-          <Section title="A25 Sensor" accent="green">
-            {Object.entries(a25)
-              .filter(([k]) => !['machineId','tsEpoch'].includes(k))
-              .map(([k, v]) => <KVRow key={k} label={k} value={v} />)}
-          </Section>
-        )}
-
-        {Object.keys(canCmd).length > 0 && (
-          <Section title="CAN Commands" accent="yellow">
-            {Object.entries(canCmd).map(([k, v]) => <StatusBadge key={k} label={k} value={v} />)}
-          </Section>
-        )}
-
-        {Object.keys(canGpio).length > 0 && (
-          <Section title="CAN GPIO" accent="purple">
-            {Object.entries(canGpio).map(([k, v]) => <StatusBadge key={k} label={k} value={v} />)}
-          </Section>
-        )}
-
-        {(runtime.suctionSec != null || runtime.suction_total_seconds != null) && (
-          <Section title="Runtime" accent="indigo">
-            <KVRow
-              label="Total Suction"
-              value={fmtDuration(runtime.suctionSec ?? runtime.suction_total_seconds)}
-            />
+        {/* Runtime Summary */}
+        {runtime.suctionSec != null && (
+          <Section title="Runtime" accent="purple">
+            <KVRow label="Total Suction" value={fmtDuration(runtime.suctionSec)} />
             {Array.isArray(runtime.daily) && runtime.daily.length > 0 && (
-              <div className="mt-2">
-                <p className="text-xs text-gray-400 mb-1 px-1">Daily (last 5 days)</p>
-                {[...runtime.daily].reverse().slice(0, 5).map(([date, secs]) => (
-                  <div key={date} className="flex items-center justify-between py-1 px-3">
-                    <span className="text-xs text-gray-500">{date}</span>
-                    <span className="text-xs font-medium text-indigo-600">{fmtDuration(secs)}</span>
-                  </div>
-                ))}
+              <div className="mt-2 pt-2 border-t border-gray-200">
+                <p className="text-xs font-semibold text-gray-600 mb-2">Daily Hours (Last 7 days)</p>
+                <div className="space-y-1">
+                  {[...runtime.daily].reverse().slice(0, 7).map(([date, secs]) => (
+                    <div key={date} className="flex items-center justify-between text-xs">
+                      <span className="text-gray-500">{date}</span>
+                      <span className="font-medium text-indigo-600">{fmtDuration(secs)}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </Section>
@@ -154,6 +134,7 @@ const MachineCard = ({ row }) => {
 // ── Main Component ────────────────────────────────────────────────────────────
 const Hmi32Monitor = () => {
   const [machines, setMachines] = useState([]);
+  const [history, setHistory] = useState([]);
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState('');
 
@@ -177,10 +158,30 @@ const Hmi32Monitor = () => {
     }
   };
 
+  const fetchHistory = async () => {
+    try {
+      const res  = await fetch(apiUrl('/api/hmi32/history'));
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success) {
+        const rows = Array.isArray(data.data) ? data.data : [];
+        setHistory(rows);
+        console.log('[Hmi32Monitor] Fetched history:', rows.length, 'records');
+      } else {
+        console.warn('[Hmi32Monitor] History fetch failed:', data.message);
+      }
+    } catch (err) {
+      console.error('[Hmi32Monitor] History fetch error:', err.message);
+    }
+  };
+
   useEffect(() => {
     fetchLatest();
-    // Poll every 10 seconds for fresh data
-    const interval = setInterval(fetchLatest, 10000);
+    fetchHistory();
+    // Poll every 2 seconds for fresh real-time data (like QML logs)
+    const interval = setInterval(() => {
+      fetchLatest();
+      fetchHistory();
+    }, 2000);
     return () => clearInterval(interval);
   }, []);
 
@@ -202,10 +203,13 @@ const Hmi32Monitor = () => {
           <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center py-4 sm:py-6 space-y-3 sm:space-y-0">
             <div>
               <h1 className="text-xl sm:text-2xl font-bold text-black">HMI32 Monitor</h1>
-              <p className="text-gray-500 text-sm mt-1">Machine state, ADC, distance &amp; runtime</p>
+              <p className="text-gray-500 text-sm mt-1">Real-time machine state tracking</p>
             </div>
             <button
-              onClick={fetchLatest}
+              onClick={() => {
+                fetchLatest();
+                fetchHistory();
+              }}
               className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded text-sm flex items-center self-start sm:self-auto"
             >
               <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -218,24 +222,95 @@ const Hmi32Monitor = () => {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
         {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-6">{error}</div>
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">{error}</div>
         )}
-        {machines.length === 0 && !error ? (
+        
+        {/* Latest State */}
+        {machines.length > 0 ? (
+          <div>
+            <h2 className="text-lg font-bold text-gray-900 mb-4">Latest State</h2>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {machines.map((row) => (
+                <MachineCard key={row._id || row.machineId} row={row} />
+              ))}
+            </div>
+          </div>
+        ) : !loading && (
           <div className="text-center py-16 bg-white rounded-lg shadow border border-gray-100">
             <svg className="mx-auto h-12 w-12 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
                 d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
             </svg>
             <p className="mt-3 text-gray-500 text-sm">No HMI32 data yet.</p>
-            <p className="text-gray-400 text-xs mt-1">Run the import script or connect a machine.</p>
+          </div>
+        )}
+
+        {/* State Change History */}
+        {history.length > 0 ? (
+          <div>
+            <h2 className="text-lg font-bold text-gray-900 mb-4">State Change History (Last {history.length})</h2>
+            <div className="bg-white border border-gray-200 rounded-lg shadow overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase">Timestamp</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase">Machine ID</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase">State Changes</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase">PA0 ADC</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase">A25 Distance</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {[...history].reverse().map((item, idx) => {
+                      const state = item.state || {};
+                      const adc = item.adc || {};
+                      const distance = item.distance || {};
+                      const onStates = Object.entries(state)
+                        .filter(([k, v]) => v === true && !k.includes('button'))
+                        .map(([k]) => k);
+
+                      return (
+                        <tr key={idx} className="hover:bg-gray-50">
+                          <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-600">
+                            {item.updated_at ? new Date(item.updated_at).toLocaleString() : '-'}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                            {item.machineId || '-'}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-700">
+                            {onStates.length > 0 ? (
+                              <div className="flex flex-wrap gap-1">
+                                {onStates.map((s) => (
+                                  <span key={s} className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                    {s} ON
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-gray-400">All OFF</span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                            {adc.pa0 ?? '-'}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                            {distance.a25Cm ?? '-'} cm
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {machines.map((row) => (
-              <MachineCard key={row._id || row.machineId} row={row} />
-            ))}
+          <div className="text-center py-8 bg-gray-50 rounded-lg border border-gray-200">
+            <p className="text-gray-500 text-sm">No state changes recorded yet.</p>
+            <p className="text-gray-400 text-xs mt-1">State changes will appear here as they happen.</p>
           </div>
         )}
       </div>
