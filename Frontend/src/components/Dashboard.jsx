@@ -7,8 +7,6 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [token, setToken] = useState('');
-  const [hmi32Latest, setHmi32Latest] = useState([]);
-  const [hmi32Error, setHmi32Error] = useState('');
 
   useEffect(() => {
     // Get token from localStorage
@@ -21,7 +19,6 @@ const Dashboard = () => {
     
     setToken(storedToken);
     fetchDevices(storedToken);
-    fetchHmi32Latest();
   }, []);
 
   const fetchDevices = async (authToken) => {
@@ -222,46 +219,7 @@ const Dashboard = () => {
           </div>
         </div>
 
-        <div className="mb-6">
-          <h2 className="text-lg font-medium text-gray-900 mb-4">HMI32 Latest</h2>
-          {hmi32Error ? (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded" role="alert">
-              <span className="block sm:inline">{hmi32Error}</span>
-            </div>
-          ) : hmi32Latest.length === 0 ? (
-            <div className="text-center py-8 bg-white rounded-lg shadow">
-              <p className="text-sm text-gray-500">No HMI32 data received yet.</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-              {hmi32Latest.map((row) => (
-                <div key={row._id || row.machineId} className="bg-white overflow-hidden shadow rounded-lg">
-                  <div className="p-5">
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="text-sm font-medium text-gray-500">Machine</div>
-                      <div className="text-sm font-semibold text-gray-900">{row.machineId || '-'}</div>
-                    </div>
-                    <div className="text-xs text-gray-500 mb-3">
-                      Updated: {row.updated_at ? new Date(row.updated_at).toLocaleString() : '-'}
-                    </div>
-                    <pre className="text-xs bg-gray-50 rounded p-3 overflow-auto max-h-64">
-                      {JSON.stringify(
-                        {
-                          state: row.state,
-                          a25: row.a25,
-                          canCmd: row.canCmd,
-                          canGpio: row.canGpio
-                        },
-                        null,
-                        2
-                      )}
-                    </pre>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+
 
         {/* Device Grid */}
         <div className="mb-6">
