@@ -38,3 +38,21 @@ export const apiUrl = (path) => {
   const p = path.startsWith('/') ? path : `/${path}`;
   return `${getEffectiveBase()}${p}`;
 };
+
+/**
+ * Socket.IO server URL.
+ * - Dev:  VITE_SOCKET_URL (e.g. http://localhost:3001) — proxy doesn't handle WS upgrade
+ * - Prod: VITE_SOCKET_URL = VITE_API_BASE_URL = same origin
+ * - Fallback: window.location.origin (works when frontend + backend on same server)
+ */
+export const getSocketUrl = () => {
+  const explicit =
+    typeof import.meta !== 'undefined' && import.meta.env?.VITE_SOCKET_URL
+      ? String(import.meta.env.VITE_SOCKET_URL).replace(/\/$/, '')
+      : '';
+  if (explicit) return explicit;
+  const base = getEffectiveBase();
+  if (base) return base;
+  if (typeof window !== 'undefined') return window.location.origin;
+  return 'http://localhost:3001';
+};

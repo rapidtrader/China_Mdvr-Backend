@@ -1,13 +1,19 @@
 const express = require('express');
+const http = require('http');
 const cors = require('cors');
 const axios = require('axios');
 const https = require('https');
 const { testConnection, initializeDatabase, closeDatabase } = require('./mongodb');
 const User = require('./models/User');
+const Hmi32Latest = require('./models/Hmi32Latest');
 const { saveDeviceData, saveGpsData, saveDeviceStatusData, getGpsData, getAllGpsHistoryFromDb, getDeviceData, getDeviceStatusData, saveUserLogin, getUserByUsername, getAllUsers } = require('./services/dataService');
+const { Server: SocketIOServer } = require('socket.io');
+const SuctionSession = require('./models/SuctionSession');
+const RuntimeData = require('./models/RuntimeData');
 require('dotenv').config();
 
 const app = express();
+const httpServer = http.createServer(app);
 const PORT = process.env.PORT || 3001;
 
 // Vendor HTTPS media API base (Nov 2025+ previews often exposed on :9367)
@@ -94,13 +100,155 @@ const assertAllowedWebRtcSdpUrl = (rawUrl) => {
 };
 
 // Middleware
+const corsOrigins = ['http://localhost:5173', 'http://127.0.0.1:5174', 'http://localhost:3001', 'http://localhost:3000', 'http://127.0.0.1:3000', 'https://ops.dynacleanindustries.com', 'http://ops.dynacleanindustries.com'];
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://127.0.0.1:5174', 'http://localhost:3001','http://localhost:3000', 'http://127.0.0.1:3000', 'https://ops.dynacleanindustries.com', 'http://ops.dynacleanindustries.com'],
+  origin: corsOrigins,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Token']
 }));
 app.use(express.json());
+
+const io = new SocketIOServer(httpServer, {
+  cors: {
+    origin: corsOrigins,
+    credentials: true,
+    methods: ['GET', 'POST']
+  }
+});
+
+const handleMachineEvent = async (event, payload) => {
+  if (!payload || typeof payload !== 'object') return;
+  const machineId = String(payload.machineId || '').trim();
+  if (!machineId) return;
+
+  const baseUpdate = {
+    lastEvent: event,
+    lastPayload: payload,
+    lastTsEpoch:
+      Number.isFinite(payload.tsEpoch) && payload.tsEpoch > 0 ? payload.tsEpoch : Date.now()
+  };
+
+  if (event === 'machine:state') {
+    await Hmi32Latest.upsertByMachineId(machineId, {
+      ...baseUpdate,
+      state: payload
+    });
+    return;
+  }
+
+  if (event === 'machine:gps') {
+    await Hmi32Latest.upsertByMachineId(machineId, {
+      ...baseUpdate,
+      gps: payload
+    });
+    return;
+  }
+
+  if (event === 'machine:a25') {
+    await Hmi32Latest.upsertByMachineId(machineId, {
+      ...baseUpdate,
+      a25: payload
+    });
+    return;
+  }
+
+  if (event === 'machine:can:cmd' || event === 'machine:can:gpio') {
+    const cmd = payload.cmd != null ? String(payload.cmd) : '';
+    if (!cmd) {
+      await Hmi32Latest.upsertByMachineId(machineId, baseUpdate);
+      return;
+    }
+
+    const current = await Hmi32Latest.findByMachineId(machineId);
+    if (event === 'machine:can:cmd') {
+      const next = {
+        ...(current && typeof current.canCmd === 'object' ? current.canCmd : {}),
+        [cmd]: payload.state
+      };
+      await Hmi32Latest.upsertByMachineId(machineId, {
+        ...baseUpdate,
+        canCmd: next
+      });
+      return;
+    }
+
+    const next = {
+      ...(current && typeof current.canGpio === 'object' ? current.canGpio : {}),
+      [cmd]: payload.state
+    };
+    await Hmi32Latest.upsertByMachineId(machineId, {
+      ...baseUpdate,
+      canGpio: next
+    });
+  }
+
+  // Suction session start
+  if (event === 'machine:suction:start') {
+    await SuctionSession.insert({
+      machineId,
+      date: payload.date || null,
+      start: payload.start || null,
+      stop: null,
+      durationSec: 0,
+      formatted: '00:00:00',
+      synced: false,
+    });
+    return;
+  }
+
+  // Suction session stop — update the most recent open session for this machine
+  if (event === 'machine:suction:stop') {
+    const db = require('./mongodb').getDatabase();
+    // Find the most recent open session for this machine (stop_time null = open)
+    const openSession = await db.collection('productionrunlogs').findOne(
+      { machine_id: machineId, stop_time: null },
+      { sort: { created_at: -1 } }
+    );
+    if (openSession) {
+      await db.collection('productionrunlogs').updateOne(
+        { _id: openSession._id },
+        {
+          $set: {
+            stop_time: payload.stop || null,
+            total_running_time: Math.round(Number(payload.durationSec) || 0),
+            total_running_time_formatted: payload.formatted || '00:00:00',
+            synced: true,
+          },
+        }
+      );
+    } else {
+      // No open session — insert complete record
+      await SuctionSession.insert({
+        machineId,
+        date: payload.date || null,
+        start: payload.start || null,
+        stop: payload.stop || null,
+        durationSec: Number(payload.durationSec) || 0,
+        formatted: payload.formatted || '00:00:00',
+        synced: true,
+      });
+    }
+    return;
+  }
+
+  // Runtime snapshot from machine:state (contains runtime field)
+  if (event === 'machine:state' && payload.runtime) {
+    await RuntimeData.upsertByMachineId(machineId, payload.runtime).catch(() => {});
+  }
+
+  // Dedicated runtime snapshot event
+  if (event === 'machine:runtime') {
+    await RuntimeData.upsertByMachineId(machineId, payload).catch(() => {});
+  }
+};
+
+io.on('connection', (socket) => {
+  socket.onAny((event, payload) => {
+    if (typeof event !== 'string' || !event.startsWith('machine:')) return;
+    handleMachineEvent(event, payload).catch(() => {});
+  });
+});
 
 // Dev helper: confirm requests reach this Node process (set DEBUG_GPS_HISTORY=1)
 if (process.env.DEBUG_GPS_HISTORY === '1') {
@@ -118,6 +266,9 @@ const initializeServer = async () => {
   try {
     await testConnection();
     await initializeDatabase();
+    // Ensure indexes for new collections
+    await SuctionSession.ensureIndexes().catch((e) => console.warn('SuctionSession index warn:', e.message));
+    await RuntimeData.ensureIndexes().catch((e) => console.warn('RuntimeData index warn:', e.message));
     console.log('Database initialized successfully');
   } catch (error) {
     console.error('Failed to initialize database:', error.message);
@@ -239,6 +390,142 @@ app.post('/api/login', async (req, res) => {
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
+});
+
+app.get('/api/hmi32/latest', async (req, res) => {
+  try {
+    const machineId = String(req.query.machineId || '').trim();
+    if (machineId) {
+      const row = await Hmi32Latest.findByMachineId(machineId);
+      return res.json({ success: true, data: row });
+    }
+    const rows = await Hmi32Latest.findAll();
+    return res.json({ success: true, data: rows });
+  } catch (error) {
+    console.error('Error fetching HMI32 latest:', error.message);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch HMI32 latest',
+      error: error.message
+    });
+  }
+});
+
+// Machine info from machineinfos collection
+app.get('/api/hmi32/machine-info', async (req, res) => {
+  try {
+    const db = require('./mongodb').getDatabase();
+    const machineId = String(req.query.machineId || '').trim() || undefined;
+    const filter = machineId ? { machineId } : {};
+    const docs = await db.collection('machineinfos').find(filter).sort({ updated_at: -1 }).toArray();
+    return res.json({ success: true, data: docs });
+  } catch (error) {
+    console.error('machine-info error:', error.message);
+    return res.status(500).json({ success: false, message: 'Failed to fetch machine info', error: error.message });
+  }
+});
+// Fields: machine_id, date, start_time, stop_time, total_running_time, total_running_time_formatted
+app.post('/api/production-run-log', async (req, res) => {
+  try {
+    const {
+      machine_id,
+      date,
+      start_time,
+      stop_time,
+      total_running_time,
+      total_running_time_formatted,
+    } = req.body || {};
+
+    if (!machine_id || !date || !start_time || !stop_time) {
+      return res.status(400).json({
+        success: false,
+        message: 'machine_id, date, start_time and stop_time are required',
+      });
+    }
+
+    const db = require('./mongodb').getDatabase();
+    await db.collection('productionrunlogs').insertOne({
+      machine_id: String(machine_id),
+      date: String(date),
+      start_time: String(start_time),
+      stop_time: String(stop_time),
+      total_running_time: Number(total_running_time) || 0,
+      total_running_time_formatted: String(total_running_time_formatted || '00:00:00'),
+      synced: true,
+      created_at: new Date(),
+    });
+
+    return res.json({ success: true, message: 'Session saved' });
+  } catch (error) {
+    console.error('production-run-log error:', error.message);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to save session',
+      error: error.message,
+    });
+  }
+});
+app.get('/api/hmi32/reports/sessions', async (req, res) => {
+  try {
+    const machineId = String(req.query.machineId || '').trim() || undefined;
+    const date = String(req.query.date || '').trim() || undefined;
+    const limitRaw = req.query.limit ? parseInt(String(req.query.limit), 10) : undefined;
+    const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? limitRaw : undefined;
+
+    const sessions = await SuctionSession.findAll({ machineId, date, limit });
+
+    // Return as-is (already in Pi's field format: machine_id, start_time, stop_time, etc.)
+    return res.json({ success: true, data: sessions });
+  } catch (error) {
+    console.error('Error reading suction sessions:', error.message);
+    return res.status(500).json({ success: false, message: 'Failed to load sessions', error: error.message });
+  }
+});
+
+// Reports: runtime summary from MongoDB (aggregated across all machines)
+app.get('/api/hmi32/reports/runtime', async (req, res) => {
+  try {
+    const machineId = String(req.query.machineId || '').trim() || undefined;
+
+    let rows;
+    if (machineId) {
+      const row = await RuntimeData.findByMachineId(machineId);
+      rows = row ? [row] : [];
+    } else {
+      rows = await RuntimeData.findAll();
+    }
+
+    if (rows.length === 0) {
+      return res.json({ success: true, data: { suction_total_seconds: 0, daily_seconds: {} } });
+    }
+
+    // Merge all machines into one summary
+    let totalSec = 0;
+    const mergedDaily = {};
+    for (const row of rows) {
+      totalSec += Number(row.suction_total_seconds) || 0;
+      const daily = row.daily_seconds || {};
+      for (const [date, secs] of Object.entries(daily)) {
+        mergedDaily[date] = (mergedDaily[date] || 0) + (Number(secs) || 0);
+      }
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        suction_total_seconds: totalSec,
+        daily_seconds: mergedDaily,
+        machines: rows.map((r) => ({
+          machineId: r.machineId,
+          suction_total_seconds: r.suction_total_seconds,
+          updated_at: r.updated_at,
+        })),
+      },
+    });
+  } catch (error) {
+    console.error('Error reading runtime:', error.message);
+    return res.status(500).json({ success: false, message: 'Failed to load runtime', error: error.message });
+  }
 });
 
 // Get all users (for testing)
@@ -825,7 +1112,7 @@ app.post('/api/media/previewVideo', async (req, res) => {
 
 // Start server with database initialization
 initializeServer().then(() => {
-  app.listen(PORT, () => {
+  httpServer.listen(PORT, () => {
     console.log(`Backend server running on port ${PORT}`);
     console.log(
       'GPS history from DB: GET|POST /api/gps/history/db or /api/gps/mongo-history'

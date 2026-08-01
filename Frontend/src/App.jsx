@@ -5,6 +5,9 @@ import GpsData from './components/GpsData';
 import DeviceStatus from './components/DeviceStatus';
 import LiveVideo from './components/LiveVideo';
 import Sidebar from './components/Sidebar';
+import Hmi32Monitor from './components/Hmi32Monitor';
+import MachineInfoPage from './components/MachineInfoPage';
+import ReportsPage from './components/ReportsPage';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import './App.css';
 
@@ -38,6 +41,12 @@ function AppContent() {
         return <DeviceStatus />;
       case 'video':
         return <LiveVideo />;
+      case 'hmi32-monitor':
+        return <Hmi32Monitor />;
+      case 'machine-info':
+        return <MachineInfoPage />;
+      case 'reports':
+        return <ReportsPage />;
       default:
         return <Dashboard />;
     }
