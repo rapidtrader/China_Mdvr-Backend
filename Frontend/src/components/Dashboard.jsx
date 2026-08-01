@@ -40,7 +40,14 @@ const Dashboard = () => {
       const data = await response.json();
 
       if (data.success) {
-        setDevices(data.data?.data?.list || []);
+        // Handle both response shapes:
+        // { data: { data: { list: [] } } }  — external API
+        // { data: { list: [] } }             — mock/db data
+        const list =
+          data.data?.data?.list ||
+          data.data?.list ||
+          [];
+        setDevices(list);
         console.log('Devices fetched:', data.data);
       } else {
         setError(data.message || 'Failed to fetch devices');

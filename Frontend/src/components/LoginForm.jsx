@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { apiUrl } from '../api';
 
-const LoginForm = () => {
+const LoginForm = ({ onBack }) => {
   const { login } = useAuth();
   const [formData, setFormData] = useState({
     username: '',

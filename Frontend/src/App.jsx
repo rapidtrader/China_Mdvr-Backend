@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import LoginForm from './components/LoginForm';
 import Dashboard from './components/Dashboard';
 import GpsData from './components/GpsData';
@@ -11,10 +11,14 @@ import ReportsPage from './components/ReportsPage';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import './App.css';
 
+// Tabs jo bina login ke accessible hain
+const PUBLIC_TABS = ['hmi32-monitor', 'machine-info', 'reports'];
+
 function AppContent() {
   const { isAuthenticated, loading } = useAuth();
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const [activeTab, setActiveTab] = useState('hmi32-monitor');
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [showLogin, setShowLogin] = useState(false);
 
   if (loading) {
     return (
@@ -27,28 +31,40 @@ function AppContent() {
     );
   }
 
-  if (!isAuthenticated) {
-    return <LoginForm />;
+  // MDVR tabs ke liye login required
+  const handleTabChange = (tab) => {
+    if (!PUBLIC_TABS.includes(tab) && !isAuthenticated) {
+      setShowLogin(true);
+      return;
+    }
+    setActiveTab(tab);
+    setShowLogin(false);
+  };
+
+  // Login form show karo
+  if (showLogin && !isAuthenticated) {
+    return <LoginForm onBack={() => setShowLogin(false)} />;
   }
 
   const renderContent = () => {
     switch (activeTab) {
-      case 'dashboard':
-        return <Dashboard />;
-      case 'gps':
-        return <GpsData />;
-      case 'status':
-        return <DeviceStatus />;
-      case 'video':
-        return <LiveVideo />;
       case 'hmi32-monitor':
         return <Hmi32Monitor />;
       case 'machine-info':
         return <MachineInfoPage />;
       case 'reports':
         return <ReportsPage />;
+      // MDVR tabs — login required
+      case 'dashboard':
+        return isAuthenticated ? <Dashboard /> : <Hmi32Monitor />;
+      case 'gps':
+        return isAuthenticated ? <GpsData /> : <Hmi32Monitor />;
+      case 'status':
+        return isAuthenticated ? <DeviceStatus /> : <Hmi32Monitor />;
+      case 'video':
+        return isAuthenticated ? <LiveVideo /> : <Hmi32Monitor />;
       default:
-        return <Dashboard />;
+        return <Hmi32Monitor />;
     }
   };
 
@@ -66,16 +82,18 @@ function AppContent() {
             </svg>
           </button>
           <h1 className="text-lg font-semibold text-black">MDVR System</h1>
-          <div className="w-10"></div> {/* Spacer for centering */}
+          <div className="w-10"></div>
         </div>
       </div>
 
       {/* Sidebar */}
-      <Sidebar 
-        activeTab={activeTab} 
-        onTabChange={setActiveTab} 
+      <Sidebar
+        activeTab={activeTab}
+        onTabChange={handleTabChange}
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
+        isAuthenticated={isAuthenticated}
+        onLoginClick={() => setShowLogin(true)}
       />
 
       {/* Main Content */}
