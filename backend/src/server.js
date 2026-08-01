@@ -448,7 +448,7 @@ app.post('/api/hmi32/history', async (req, res) => {
     console.log('[HMI32 History API] POST received:', JSON.stringify(req.body).substring(0, 200));
     
     const db = require('./mongodb').getDatabase();
-    const { machineId, state, adc, distance, runtime } = req.body;
+    const { machineId, state, adc, distance, runtime, updated_at } = req.body;
     
     if (!machineId) {
       console.log('[HMI32 History API] ❌ Missing machineId');
@@ -460,30 +460,57 @@ app.post('/api/hmi32/history', async (req, res) => {
 
     console.log(`[HMI32 History API] Saving for machineId: ${machineId}`);
     
-    // Ensure collection exists and has indexes
-    const collection = db.collection('hmi32_history');
-    await collection.createIndex({ machineId: 1 });
-    await collection.createIndex({ updated_at: -1 });
+    // Ensure history collection exists and has indexes
+    const historyCollection = db.collection('hmi32_history');
+    await historyCollection.createIndex({ machineId: 1 });
+    await historyCollection.createIndex({ updated_at: -1 });
 
+    const now = new Date();
     const historyRecord = {
       machineId,
       state: state || {},
       adc: adc || {},
       distance: distance || {},
       runtime: runtime || {},
-      updated_at: new Date(),
-      created_at: new Date(),
+      updated_at: updated_at ? new Date(updated_at) : now,
+      created_at: now,
       source: 'hmi32_app'
     };
 
-    const result = await collection.insertOne(historyRecord);
-    console.log(`[HMI32 History API] ✅ Inserted record for ${machineId}:`, result.insertedId);
+    const historyResult = await historyCollection.insertOne(historyRecord);
+    console.log(`[HMI32 History API] ✅ Inserted history for ${machineId}:`, historyResult.insertedId);
+    
+    // ALSO update hmi32_latest collection for real-time dashboard
+    try {
+      const latestCollection = db.collection('hmi32_latest');
+      await latestCollection.createIndex({ machineId: 1 }, { unique: true });
+      
+      const latestRecord = {
+        machineId,
+        state,
+        adc,
+        distance,
+        runtime,
+        updated_at: now,
+        source: 'hmi32_app',
+        lastEvent: 'machine:state'
+      };
+      
+      await latestCollection.updateOne(
+        { machineId },
+        { $set: latestRecord },
+        { upsert: true }
+      );
+      console.log(`[HMI32 History API] ✅ Updated latest for ${machineId}`);
+    } catch (err) {
+      console.error(`[HMI32 History API] ⚠️ Failed to update latest:`, err.message);
+    }
     
     return res.json({
       success: true,
-      message: 'State saved to history',
+      message: 'State saved to history and latest',
       data: historyRecord,
-      id: result.insertedId
+      id: historyResult.insertedId
     });
   } catch (error) {
     console.error('[HMI32 History API] ❌ Error:', error.message, error.stack);
