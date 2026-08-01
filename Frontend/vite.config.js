@@ -12,12 +12,12 @@ export default defineConfig({
     proxy: {
       // Local dev: call same-origin `/api/*`, forward to Node backend
       '/api': {
-        target: 'http://127.0.0.1:3001',
+        target: 'http://127.0.0.1:4001',
         changeOrigin: true
       },
       // Socket.IO WebSocket proxy for local dev
       '/socket.io': {
-        target: 'http://127.0.0.1:3001',
+        target: 'http://127.0.0.1:4001',
         changeOrigin: true,
         ws: true
       }
