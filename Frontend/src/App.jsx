@@ -8,11 +8,12 @@ import Sidebar from './components/Sidebar';
 import Hmi32Monitor from './components/Hmi32Monitor';
 import MachineInfoPage from './components/MachineInfoPage';
 import ReportsPage from './components/ReportsPage';
+import TbtrackVehiclesPage from './components/TbtrackVehiclesPage';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import './App.css';
 
 // Tabs jo bina login ke accessible hain
-const PUBLIC_TABS = ['hmi32-monitor', 'machine-info', 'reports'];
+const PUBLIC_TABS = ['hmi32-monitor', 'machine-info', 'reports', 'tbtrack-vehicles'];
 
 function AppContent() {
   const { isAuthenticated, loading } = useAuth();
@@ -54,6 +55,8 @@ function AppContent() {
         return <MachineInfoPage />;
       case 'reports':
         return <ReportsPage />;
+      case 'tbtrack-vehicles':
+        return <TbtrackVehiclesPage />;
       // MDVR tabs — login required
       case 'dashboard':
         return isAuthenticated ? <Dashboard /> : <Hmi32Monitor />;

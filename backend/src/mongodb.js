@@ -64,6 +64,17 @@ const createCollections = async () => {
     await statusCollection.createIndex({ username: 1, deviceId: 1, created_at: -1 });
     await statusCollection.createIndex({ deviceId: 1, created_at: -1 });
     await statusCollection.createIndex({ created_at: -1 });
+
+    // TBTrack vehicles — latest snapshot per vehicle + fetch history
+    const tbtrackLatest = db.collection('tbtrack_vehicles_latest');
+    await tbtrackLatest.createIndex({ ouid: 1 }, { unique: true });
+    await tbtrackLatest.createIndex({ vehicleNo: 1 });
+    await tbtrackLatest.createIndex({ updated_at: -1 });
+
+    const tbtrackHistory = db.collection('tbtrack_vehicles_history');
+    await tbtrackHistory.createIndex({ ouid: 1, fetched_at: -1 });
+    await tbtrackHistory.createIndex({ vehicleNo: 1, fetched_at: -1 });
+    await tbtrackHistory.createIndex({ fetched_at: -1 });
     
     console.log('MongoDB collections and indexes created successfully');
   } catch (error) {

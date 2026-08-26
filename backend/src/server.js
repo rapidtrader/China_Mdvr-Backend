@@ -6,6 +6,7 @@ const https = require('https');
 const { testConnection, initializeDatabase, closeDatabase } = require('./mongodb');
 const User = require('./models/User');
 const Hmi32Latest = require('./models/Hmi32Latest');
+const TbtrackVehicle = require('./models/TbtrackVehicle');
 const { saveDeviceData, saveGpsData, saveDeviceStatusData, getGpsData, getAllGpsHistoryFromDb, getDeviceData, getDeviceStatusData, saveUserLogin, getUserByUsername, getAllUsers } = require('./services/dataService');
 const { Server: SocketIOServer } = require('socket.io');
 const SuctionSession = require('./models/SuctionSession');
@@ -532,6 +533,101 @@ app.post('/api/hmi32/history', async (req, res) => {
       success: false,
       message: 'Failed to save HMI32 history',
       error: error.message
+    });
+  }
+});
+
+// TBTrack GPS — sign in and fetch vehicle list (credentials via env)
+const TBTRACK_BASE_URL = process.env.TBTRACK_BASE_URL || 'https://tbtrack.in';
+const TBTRACK_USERNAME = process.env.TBTRACK_USERNAME || '';
+const TBTRACK_PASSWORD = process.env.TBTRACK_PASSWORD || '';
+let tbtrackTokenCache = { token: null, fetchedAt: 0 };
+const TBTRACK_TOKEN_TTL_MS = 25 * 60 * 1000;
+
+const getTbtrackToken = async () => {
+  const now = Date.now();
+  if (tbtrackTokenCache.token && now - tbtrackTokenCache.fetchedAt < TBTRACK_TOKEN_TTL_MS) {
+    return tbtrackTokenCache.token;
+  }
+  if (!TBTRACK_USERNAME || !TBTRACK_PASSWORD) {
+    throw new Error('TBTrack credentials not configured (TBTRACK_USERNAME / TBTRACK_PASSWORD)');
+  }
+  const signinRes = await axios.post(
+    `${TBTRACK_BASE_URL}/gps/v3/signin`,
+    { username: TBTRACK_USERNAME, password: TBTRACK_PASSWORD },
+    { timeout: 20000, validateStatus: () => true }
+  );
+  if (signinRes.data?.status !== 'OK' || !signinRes.data?.data?.token) {
+    throw new Error(signinRes.data?.message || 'TBTrack signin failed');
+  }
+  tbtrackTokenCache = { token: signinRes.data.data.token, fetchedAt: now };
+  return tbtrackTokenCache.token;
+};
+
+app.get('/api/hmi32/tbtrack/vehicles', async (req, res) => {
+  try {
+    const token = await getTbtrackToken();
+    const listRes = await axios.get(
+      `${TBTRACK_BASE_URL}/gps/ajax/v3/vehicle/list/detail`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 30000,
+        validateStatus: () => true
+      }
+    );
+    if (listRes.data?.status !== 'OK') {
+      tbtrackTokenCache = { token: null, fetchedAt: 0 };
+      return res.status(502).json({
+        success: false,
+        message: listRes.data?.message || 'TBTrack vehicle list failed'
+      });
+    }
+
+    const vehicles = Array.isArray(listRes.data.data) ? listRes.data.data : [];
+    let savedLatest = 0;
+    let savedHistory = 0;
+
+    try {
+      savedLatest = await TbtrackVehicle.upsertLatest(vehicles, TBTRACK_USERNAME);
+      savedHistory = await TbtrackVehicle.insertHistory(vehicles, TBTRACK_USERNAME);
+    } catch (dbErr) {
+      console.error('TBTrack DB save error:', dbErr.message);
+    }
+
+    return res.json({
+      success: true,
+      data: vehicles,
+      saved: { latest: savedLatest, history: savedHistory },
+    });
+  } catch (error) {
+    console.error('TBTrack vehicles error:', error.message);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to fetch TBTrack vehicles',
+      error: error.message
+    });
+  }
+});
+
+app.get('/api/hmi32/tbtrack/vehicles/db', async (req, res) => {
+  try {
+    const source = String(req.query.source || 'latest').toLowerCase();
+    if (source === 'history') {
+      const ouid = String(req.query.ouid || '').trim() || undefined;
+      const vehicleNo = String(req.query.vehicleNo || '').trim() || undefined;
+      const limit = req.query.limit ? parseInt(String(req.query.limit), 10) : 50;
+      const rows = await TbtrackVehicle.findHistory({ ouid, vehicleNo, limit });
+      return res.json({ success: true, data: rows });
+    }
+
+    const rows = await TbtrackVehicle.findAllLatest();
+    return res.json({ success: true, data: rows });
+  } catch (error) {
+    console.error('TBTrack DB read error:', error.message);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to read TBTrack vehicles from database',
+      error: error.message,
     });
   }
 });

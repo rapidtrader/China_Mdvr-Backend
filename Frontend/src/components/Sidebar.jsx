@@ -24,6 +24,11 @@ const Sidebar = ({ activeTab, onTabChange, isOpen, onClose }) => {
       label: 'Reports',
       icon: 'M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z'
     },
+    {
+      id: 'tbtrack-vehicles',
+      label: 'GPS Vehicles',
+      icon: 'M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z'
+    },
   ];
 
   const [isMdvrExpanded, setIsMdvrExpanded] = useState(true);

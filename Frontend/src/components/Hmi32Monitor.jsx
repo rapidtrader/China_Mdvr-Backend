@@ -258,9 +258,7 @@ const Hmi32Monitor = () => {
                     <tr>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase">Timestamp</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase">Machine ID</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase">State Changes</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase">PA0 ADC</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase">A25 Distance</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase">All Pin States</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
@@ -268,9 +266,12 @@ const Hmi32Monitor = () => {
                       const state = item.state || {};
                       const adc = item.adc || {};
                       const distance = item.distance || {};
-                      const onStates = Object.entries(state)
-                        .filter(([k, v]) => v === true && k !== 'buttonColors' && typeof v === 'boolean')
-                        .map(([k]) => k);
+                      
+                      // Get all state fields (excluding buttonColors and other metadata)
+                      const allStates = Object.entries(state)
+                        .filter(([k, v]) => typeof v === 'boolean' && k !== 'buttonColors')
+                        .sort(([a], [b]) => a.localeCompare(b))
+                        .map(([k, v]) => ({ name: k, value: v }));
 
                       return (
                         <tr key={idx} className="hover:bg-gray-50">
@@ -280,24 +281,21 @@ const Hmi32Monitor = () => {
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                             {item.machineId || '-'}
                           </td>
-                          <td className="px-6 py-4 text-sm text-gray-700">
-                            {onStates.length > 0 ? (
-                              <div className="flex flex-wrap gap-1">
-                                {onStates.map((s) => (
-                                  <span key={s} className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                    {s} ON
-                                  </span>
-                                ))}
-                              </div>
-                            ) : (
-                              <span className="text-gray-400">All OFF</span>
-                            )}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                            {adc.pa0 ?? '-'}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                            {distance.a25Cm ?? '-'} cm
+                          <td className="px-6 py-4 text-sm">
+                            <div className="flex flex-wrap gap-1.5">
+                              {allStates.map((s) => (
+                                <span
+                                  key={s.name}
+                                  className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap ${
+                                    s.value
+                                      ? 'bg-green-100 text-green-800'
+                                      : 'bg-gray-100 text-gray-600'
+                                  }`}
+                                >
+                                  {s.name} <span className="ml-1 font-bold">{s.value ? '✓' : '✗'}</span>
+                                </span>
+                              ))}
+                            </div>
                           </td>
                         </tr>
                       );
